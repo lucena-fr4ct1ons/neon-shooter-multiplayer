@@ -201,7 +201,7 @@ public class PlayerController : MonoBehaviour
         var temp = obj.ReadValue<Vector2>();
         inputVector.Set(temp.x, 0.0f, temp.y);
         
-        anim.SetFloat("MovementSpeed", (currentVelocity).magnitude);
+        anim.SetFloat("MovementSpeed", inputVector.magnitude);
     }
 
     private void FixedUpdate()
