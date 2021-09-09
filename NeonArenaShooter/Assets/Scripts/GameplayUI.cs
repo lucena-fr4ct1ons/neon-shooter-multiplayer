@@ -13,6 +13,8 @@ public class GameplayUI : MonoBehaviour
 
     [SerializeField] private GameObject koVisual;
     [SerializeField] private TextMeshProUGUI latencyDisplay;
+    [SerializeField] private GameObject eliminationTextPrefab;
+    [SerializeField] private Transform eliminationList;
 
     private void Awake()
     {
@@ -28,5 +30,11 @@ public class GameplayUI : MonoBehaviour
     private void Update()
     {
         latencyDisplay.SetText($"Ping: {Mathf.FloorToInt(((float)NetworkTime.rtt) * 1000.0f)}ms");
+    }
+
+    public void DrawElimination(string eliminater, string eliminated)
+    {
+        Instantiate(eliminationTextPrefab, eliminationList).GetComponent<TextMeshProUGUI>().
+            SetText($"{eliminater} <color=yellow>></color> {eliminated}");
     }
 }

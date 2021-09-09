@@ -30,6 +30,7 @@ public class PlayerController : NetworkBehaviour
     [SerializeField] private int playerNumber = 1;
     [SerializeField] private float timeBetweenShooting = 0.1f;
     [SyncVar(hook = nameof(OnChangeHealth)), SerializeField] private int currentHealth = 100;
+    [SyncVar, SerializeField] private string playerName = "Player";
     [SerializeField] private int minHealth = 0, maxHealth = 100;
     [SerializeField] private int damagePerShot;
     [SerializeField] private float respawnTime = 3.0f;
@@ -199,16 +200,33 @@ public class PlayerController : NetworkBehaviour
                 Debug.Log($"Hit: {hit.transform.gameObject}");
                 if (hit.transform.TryGetComponent<PlayerController>(out PlayerController player))
                 {
-                    player.DealDamage(damagePerShot);
+                    player.DealDamage(damagePerShot, this);
                 }
             }
             //Debug.DrawRay(ray.origin, ray.direction * 5f, Color.green, 2.0f);
         }
     }
 
-    private void DealDamage(int damage)
+    private void DealDamage(int damage, PlayerController damager = null)
     {
         currentHealth -= damage;
+        if (currentHealth <= minHealth)
+        {
+            if (damager)
+            {
+                RpcDrawElimination(damager.playerName, this.playerName);
+            }
+            else
+            {
+                RpcDrawElimination(playerName, playerName);
+            }
+        }
+    }
+
+    [ClientRpc]
+    private void RpcDrawElimination(string eliminater, string eliminated)
+    {
+        GameplayUI.Instance.DrawElimination(eliminater, eliminated);
     }
 
     private void Knockout()
