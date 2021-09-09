@@ -3,12 +3,12 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using Cinemachine;
+using Mirror;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.Users;
 
-[RequireComponent(typeof(Rigidbody))]
-public class PlayerController : MonoBehaviour
+public class PlayerController : NetworkBehaviour
 {
     [Header("Components")]
     [SerializeField] private Rigidbody rb;
@@ -18,6 +18,9 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private Renderer renderer;
     [SerializeField] private Animator anim;
     [SerializeField] private GameplayUI myUI;
+    [SerializeField] private CharacterController controller;
+    [SerializeField] private CinemachineVirtualCamera deathCam;
+    [SerializeField] private FpsEnabler fpsSwitcher;
 
     [Header("Variables")]
     [SerializeField] private float movementSpeed = 10f;
@@ -26,17 +29,19 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float cameraSensGamepad = 1.0f;
     [SerializeField] private int playerNumber = 1;
     [SerializeField] private float timeBetweenShooting = 0.1f;
-    [SerializeField] private int currentHealth = 100, minHealth = 0, maxHealth = 100;
+    [SyncVar(hook = nameof(OnChangeHealth)), SerializeField] private int currentHealth = 100;
+    [SerializeField] private int minHealth = 0, maxHealth = 100;
     [SerializeField] private int damagePerShot;
     [SerializeField] private float respawnTime = 3.0f;
 
-    private Vector3 inputVector = new Vector3();
-    private Vector3 movementVector = new Vector3();
-    private Vector2 cameraRotation = new Vector2();
+    [SyncVar, SerializeField] private Vector3 movementVector = new Vector3();
+    [SyncVar, SerializeField] private Vector2 cameraRotation = new Vector2();
+    [SyncVar, SerializeField] private Vector3 currentVelocity;
+    [SerializeField] private bool isShooting = false;
+    [SyncVar, SerializeField] private float currentShootingCooldown;
+    [SyncVar, SerializeField] private Vector3 inputVector = new Vector3();
+
     private PlayerControllerInput input;
-    private Vector3 currentVelocity;
-    private bool isShooting = false;
-    private float currentShootingCooldown;
 
     private void Awake()
     {
@@ -50,16 +55,48 @@ public class PlayerController : MonoBehaviour
             renderer = GetComponent<MeshRenderer>();
         if (!anim)
             anim = GetComponentInChildren<Animator>();
-
-        Cursor.visible = false;
-        Cursor.lockState = CursorLockMode.Locked;
-        cameraPov = (camera.GetCinemachineComponent(CinemachineCore.Stage.Aim) as CinemachinePOV);
         
         input = new PlayerControllerInput();
+    }
+
+    private void Start()
+    {
+        myUI = GameplayUI.Instance;
+    }
+
+    public override void OnStartAuthority()
+    {
+        base.OnStartAuthority();
         
+        //Cursor.visible = false;
+        //Cursor.lockState = CursorLockMode.Locked;
+        cameraPov = (camera.GetCinemachineComponent(CinemachineCore.Stage.Aim) as CinemachinePOV);
+        
+        camera.enabled = true;
+
         EnableController();
 
         currentShootingCooldown = timeBetweenShooting;
+        
+        transform.position = GameManager.Instance.GetRandomSpawnPoint();
+    }
+
+    public override void OnStartClient()
+    {
+        base.OnStartClient();
+
+        if (!isLocalPlayer)
+        {
+            deathCam.enabled = false;
+            deathCam.Priority = -100;
+            camera.enabled = false;
+            camera.Priority = -100;
+            fpsSwitcher.Switch(false);
+        }
+        else
+        {
+            fpsSwitcher.Switch(true);
+        }
     }
 
     private void EnableController()
@@ -83,7 +120,7 @@ public class PlayerController : MonoBehaviour
         }
         else
         {
-            Debug.Log("There's no joystick.");
+            //Debug.Log("There's no joystick.");
             input.Gamepad.Disable();
             input.Keyboard.Enable();
             
@@ -104,95 +141,131 @@ public class PlayerController : MonoBehaviour
     private void RotateCamera(InputAction.CallbackContext obj)
     {
         cameraRotation = obj.ReadValue<Vector2>() * cameraSens;
-        
-        //cameraPov.m_VerticalAxis.Value -= obj.ReadValue<Vector2>().y * cameraSens;
-        //transform.Rotate(0f, obj.ReadValue<Vector2>().x * cameraSens, 0f);
-        
-        //inputVector = Quaternion.Euler(0f, transform.eulerAngles.y, 0f) * inputVector;
     }
     
     private void RotateCameraGamepad(InputAction.CallbackContext obj)
     {
         cameraRotation = obj.ReadValue<Vector2>() * cameraSensGamepad;
-        
-        //cameraPov.m_VerticalAxis.Value -= obj.ReadValue<Vector2>().y * cameraSens;
-        //transform.Rotate(0f, obj.ReadValue<Vector2>().x * cameraSens, 0f);
-        
-        //inputVector = Quaternion.Euler(0f, transform.eulerAngles.y, 0f) * inputVector;
     }
 
     private void Update()
     {
-        //cameraRotation = input.Gameplay.CameraRotation.ReadValue<Vector2>();
-        cameraPov.m_VerticalAxis.Value -= cameraRotation.y;
-        transform.Rotate(0f, cameraRotation.x, 0f);
-        camera.transform.eulerAngles = new Vector3(cameraPov.m_VerticalAxis.Value, camera.transform.eulerAngles.y, 0f);
-
-        if (currentShootingCooldown < timeBetweenShooting)
+        if (isServer)
         {
-            currentShootingCooldown += Time.deltaTime;
+            if (currentShootingCooldown < timeBetweenShooting)
+            {
+                currentShootingCooldown += Time.deltaTime;
+            }
         }
         
-        if (isShooting && currentShootingCooldown >= timeBetweenShooting)
+        if (isLocalPlayer)
         {
-            Fire();
+            cameraPov.m_VerticalAxis.Value -= cameraRotation.y;
+            camera.transform.eulerAngles =
+                new Vector3(cameraPov.m_VerticalAxis.Value, camera.transform.eulerAngles.y, 0f);
+            //cameraRotation = input.Gameplay.CameraRotation.ReadValue<Vector2>();
+            transform.Rotate(0f, cameraRotation.x, 0f);
+            
+            movementVector = Quaternion.Euler(0f, transform.eulerAngles.y, 0f) * Vector3.ClampMagnitude(inputVector, 1.0f);
+
+            //controller.Move(movementVector * movementSpeed * Time.deltaTime);
+            //TODO: I really don't want to use controller.SimpleMove, but right now I don't think there's any other way.
+            controller.SimpleMove(movementVector * movementSpeed);
+
+            if (isShooting)
+            {
+                CmdFire();
+            }
         }
+    }
+
+    [Command]
+    private void CmdFire()
+    {
+        Fire();
     }
 
     private void Fire()
     {
-        currentShootingCooldown = 0.0f;
-        RaycastHit hit;
-        //Debug.Log($"{cameraPov.m_VerticalAxis.Value}");
-        Ray ray = new Ray(camera.transform.position, camera.transform.forward);
-        if (Physics.Raycast(ray, out hit,
-            Single.PositiveInfinity))
+        if (currentShootingCooldown >= timeBetweenShooting)
         {
-            Debug.Log($"Hit: {hit.transform.gameObject}");
-            if (hit.transform.TryGetComponent<PlayerController>(out PlayerController player))
+            currentShootingCooldown = 0.0f;
+            RaycastHit hit;
+            //Debug.Log($"{cameraPov.m_VerticalAxis.Value}");
+            Ray ray = new Ray(camera.transform.position, camera.transform.forward);
+            if (Physics.Raycast(ray, out hit,
+                Single.PositiveInfinity))
             {
-                player.DealDamage(damagePerShot);
+                Debug.Log($"Hit: {hit.transform.gameObject}");
+                if (hit.transform.TryGetComponent<PlayerController>(out PlayerController player))
+                {
+                    player.DealDamage(damagePerShot);
+                }
             }
+            //Debug.DrawRay(ray.origin, ray.direction * 5f, Color.green, 2.0f);
         }
-        
-        Debug.DrawRay(ray.origin, ray.direction * 5f, Color.green, 2.0f);
     }
 
     private void DealDamage(int damage)
     {
         currentHealth -= damage;
-        if (currentHealth <= minHealth)
-        {
-            Knockout();
-        }
     }
 
     private void Knockout()
+    {
+        renderer.material.color = Color.red;
+        anim.SetTrigger("Knockout");
+        mainCollider.enabled = false;
+        if (hasAuthority)
+        {
+            deathCam.Priority = 20;
+            fpsSwitcher.Switch(false);
+            //rb.detectCollisions = false;
+            //rb.isKinematic = true;
+            myUI.DisplayKOVisual(true);
+            CmdRespawn();
+        }
+        enabled = false;
+    }
+
+    [Command]
+    private void CmdRespawn()
     {
         StartCoroutine(RespawnCoroutine());
     }
 
     private IEnumerator RespawnCoroutine()
     {
-        renderer.material.color = Color.red;
-        mainCollider.enabled = false;
-        rb.detectCollisions = false;
-        rb.isKinematic = true;
-        enabled = false;
-        myUI.DisplayKOVisual(true);
         yield return new WaitForSeconds(respawnTime);
-        myUI.DisplayKOVisual(false);
+        currentHealth = maxHealth;
+        RpcRespawn();
+    }
+
+    [ClientRpc]
+    private void RpcRespawn()
+    {
+        //if(isLocalPlayer)
+            
         Respawn();
     }
 
     private void Respawn()
     {
-        transform.position = GameManager.Instance.GetRandomSpawnPoint();
+        if (isLocalPlayer)
+        {
+            transform.position = GameManager.Instance.GetRandomSpawnPoint();
+            deathCam.Priority = 0;
+            fpsSwitcher.Switch(true);
+            myUI.DisplayKOVisual(false);
+            //rb.detectCollisions = true;
+            //rb.isKinematic = false;
+        }
+
+        //transform.position = GameManager.Instance.GetRandomSpawnPoint();
         renderer.material.color = Color.white;
+        anim.SetTrigger("Respawn");
         mainCollider.enabled = true;
-        rb.detectCollisions = true;
-        rb.isKinematic = false;
-        currentHealth = maxHealth;
+        //mainCollider.enabled = true;
         enabled = true;
     }
 
@@ -204,15 +277,44 @@ public class PlayerController : MonoBehaviour
         anim.SetFloat("MovementSpeed", inputVector.magnitude);
     }
 
+    [ClientCallback]
     private void FixedUpdate()
     {
-        movementVector = Quaternion.Euler(0f, transform.eulerAngles.y, 0f) * inputVector;
-        //movementVector.z = Quaternion.Euler(0f, transform.eulerAngles.y, 0f) * inputVector.z;
+        if (isLocalPlayer)
+        {
+            //Movement();
+        }
+    }
+
+    [Command]
+    private void CmdMovement()
+    {
+        Movement();
+    }
+
+    [SerializeField] private float velocityMagnitudeLimit = 10f;
+    
+    private void Movement()
+    {
+        //var temp = Vector3.ClampMagnitude(obj.ReadValue<Vector2>(), 1.0f);
+        //inputVector.Set(temp.x, 0.0f, temp.y);
+        movementVector = Quaternion.Euler(0f, transform.eulerAngles.y, 0f) * Vector3.ClampMagnitude(inputVector, 1.0f);
+        //movementVector.y = rb.velocity.y;
+        var tempVelocity = rb.velocity;
+        tempVelocity.y = 0.0f;
+
+        Vector3 tempVec = Vector3.SmoothDamp(rb.velocity, movementVector * movementSpeed, ref currentVelocity,
+            velocitySmooth);
+        tempVec.y = rb.velocity.y;
         
-        rb.velocity = Vector3.SmoothDamp(rb.velocity, movementVector * movementSpeed, ref currentVelocity, velocitySmooth);
-        //anim.SetFloat("MovementSpeed", (currentVelocity).magnitude);
-        
-        //rb.velocity = rb.velocity + (inputVector * Time.fixedDeltaTime * movementSpeed);
+        if (tempVelocity.magnitude <= velocityMagnitudeLimit)
+        {
+            rb.AddForce(movementVector * movementSpeed);
+        }
+
+        //rb.velocity = tempVec;
+
+        //rb.MovePosition(rb.position + movementVector * movementSpeed * Time.fixedDeltaTime);
     }
 
     private void OnEnable()
@@ -223,5 +325,26 @@ public class PlayerController : MonoBehaviour
     private void OnDisable()
     {
         input.Disable();
+    }
+
+    private void OnChangeHealth(int old, int val)
+    {
+        if(val <= minHealth)
+            Knockout();
+    }
+
+    [SerializeField] private Vector3 movementForce = new Vector3(0, 0, 100);
+    
+    [ContextMenu("Force")]
+    public void AddForce()
+    {
+        rb.AddForce(movementForce);
+        //Debug.Log($"{Camera.FieldOfViewToFocalLength(camera.m_Lens.FieldOfView, camera.m_Lens.SensorSize.x)}");
+    }
+
+    [ContextMenu("Force death")]
+    public void ForceDeath()
+    {
+        DealDamage(900);
     }
 }
