@@ -1400,6 +1400,8 @@ MonoBehaviour:
   playerNumber: 2
   timeBetweenShooting: 0.14
   currentHealth: 100
+  playerName: Player
+  teamNumber: 0
   minHealth: 0
   maxHealth: 100
   damagePerShot: 4
@@ -4499,7 +4501,7 @@ SkinnedMeshRenderer:
   m_RenderingLayerMask: 1
   m_RendererPriority: 0
   m_Materials:
-  - {fileID: 4058673905107743897, guid: c7abad7a81508924c83cfa0c485b0fe8, type: 3}
+  - {fileID: 2100000, guid: bfa863dde0bddf746bf499c1950857db, type: 2}
   m_StaticBatchInfo:
     firstSubMesh: 0
     subMeshCount: 0

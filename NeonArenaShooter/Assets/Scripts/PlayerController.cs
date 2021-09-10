@@ -31,6 +31,8 @@ public class PlayerController : NetworkBehaviour
     [SerializeField] private float timeBetweenShooting = 0.1f;
     [SyncVar(hook = nameof(OnChangeHealth)), SerializeField] private int currentHealth = 100;
     [SyncVar, SerializeField] private string playerName = "Player";
+    [SyncVar(hook = nameof(OnChangeTeam)), SerializeField] private int teamNumber = 0;
+    
     [SerializeField] private int minHealth = 0, maxHealth = 100;
     [SerializeField] private int damagePerShot;
     [SerializeField] private float respawnTime = 3.0f;
@@ -43,8 +45,10 @@ public class PlayerController : NetworkBehaviour
     [SyncVar, SerializeField] private Vector3 inputVector = new Vector3();
 
     private PlayerControllerInput input;
-    public static string insertedName;
+    public static string insertedName = "Player";
 
+    public static PlayerController localPlayer;
+    
     private void Awake()
     {
         if (!rb)
@@ -81,6 +85,16 @@ public class PlayerController : NetworkBehaviour
         currentShootingCooldown = timeBetweenShooting;
         
         transform.position = GameManager.Instance.GetRandomSpawnPoint();
+
+        CmdSetName(insertedName);
+
+        localPlayer = this;
+    }
+
+    [Command]
+    private void CmdSetName(string newName)
+    {
+        playerName = newName;
     }
 
     public override void OnStartClient()
@@ -195,15 +209,45 @@ public class PlayerController : NetworkBehaviour
             RaycastHit hit;
             //Debug.Log($"{cameraPov.m_VerticalAxis.Value}");
             Ray ray = new Ray(camera.transform.position, camera.transform.forward);
-            if (Physics.Raycast(ray, out hit,
-                Single.PositiveInfinity))
+            RaycastHit[] hits = new RaycastHit[16];
+            var numberOfHits = Physics.RaycastNonAlloc(ray, hits);
+            hits = Physics.RaycastAll(ray);
+            
+            hits = hits.OrderBy((h => h.distance)).ToArray();
+            for (int i = 0; i < hits.Length; i++)
             {
-                Debug.Log($"Hit: {hit.transform.gameObject}");
-                if (hit.transform.TryGetComponent<PlayerController>(out PlayerController player))
+                
+                if (hits[i].transform.TryGetComponent<PlayerController>(out PlayerController player))
                 {
-                    player.DealDamage(damagePerShot, this);
+                    if (player == this)
+                    {
+                        continue;
+                    }
+                    Debug.Log("There IS a player!");
+                    Debug.Log($"This: {this.teamNumber}, other: {player.teamNumber}", gameObject);
+                    Debug.Log($"Are they equal? {player.teamNumber == this.teamNumber}");
+                    if (player.teamNumber != this.teamNumber)
+                    {
+                        Debug.Log($"Hit: {hits[i].transform.gameObject}");
+                        player.DealDamage(damagePerShot, this);
+                        break;
+                    }
+                    else
+                    {
+                        continue;
+                    }
+                }
+                else
+                {
+                    Debug.Log($"Hit: {hits[i].transform.gameObject}");
+                    break;
                 }
             }
+            /*
+            if (Physics.Raycast(ray, out hit, Single.PositiveInfinity))
+            {
+                
+            }*/
             //Debug.DrawRay(ray.origin, ray.direction * 5f, Color.green, 2.0f);
         }
     }
@@ -232,7 +276,10 @@ public class PlayerController : NetworkBehaviour
 
     private void Knockout()
     {
-        renderer.material.color = Color.red;
+
+        renderer.materials[0].SetColor("_EmissionColor", Color.gray/2);
+        renderer.materials[1].SetColor("_EmissionColor", Color.gray/2);
+        
         anim.SetTrigger("Knockout");
         mainCollider.enabled = false;
         if (hasAuthority)
@@ -281,7 +328,15 @@ public class PlayerController : NetworkBehaviour
         }
 
         //transform.position = GameManager.Instance.GetRandomSpawnPoint();
-        renderer.material.color = Color.white;
+        Color temp = Color.red;
+        temp = (teamNumber == localPlayer.teamNumber) ?  Color.green : Color.red;
+        
+        float intensity = Mathf.Pow(2, 2);
+        temp *= intensity;
+
+        renderer.materials[0].SetColor("_EmissionColor", temp);
+        renderer.materials[1].SetColor("_EmissionColor", temp);
+        
         anim.SetTrigger("Respawn");
         mainCollider.enabled = true;
         //mainCollider.enabled = true;
@@ -365,5 +420,32 @@ public class PlayerController : NetworkBehaviour
     public void ForceDeath()
     {
         DealDamage(900);
+    }
+
+    public void SetTeam(int teamNumber)
+    {
+        this.teamNumber = teamNumber;
+    }
+    
+    private void OnChangeTeam(int old, int number)
+    {
+        
+        {
+            StartCoroutine(SetColorCoroutine(number));
+        }
+    }
+
+    private IEnumerator SetColorCoroutine(int number)
+    {
+        yield return new WaitUntil(() => localPlayer != null);
+        Debug.LogError($"this: {number}, local: {localPlayer.teamNumber}", gameObject);
+        Color temp = Color.red;
+        temp = (number == localPlayer.teamNumber) ? Color.green : Color.red;
+
+        float intensity = Mathf.Pow(2, 2);
+        temp *= intensity;
+        
+        renderer.materials[0].SetColor("_EmissionColor", temp);
+        renderer.materials[1].SetColor("_EmissionColor", temp);
     }
 }
