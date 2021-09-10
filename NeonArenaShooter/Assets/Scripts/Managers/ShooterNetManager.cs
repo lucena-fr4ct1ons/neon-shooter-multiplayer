@@ -9,13 +9,9 @@ using Mirror;
 
 public class ShooterNetManager : NetworkManager
 {
-	[Header("Game variables")] 
-	[SerializeField] private Transform[] spawnPoints;
-	
-	public override void OnServerAddPlayer(NetworkConnection conn)
+	public override void OnStartHost()
 	{
-		base.OnServerAddPlayer(conn);
-
-		//conn.identity.transform.position = spawnPoints[Random.Range(0, spawnPoints.Length)].position;
+		base.OnStartHost();
+		
 	}
 }

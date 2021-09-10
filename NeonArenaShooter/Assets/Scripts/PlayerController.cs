@@ -43,6 +43,7 @@ public class PlayerController : NetworkBehaviour
     [SyncVar, SerializeField] private Vector3 inputVector = new Vector3();
 
     private PlayerControllerInput input;
+    public static string insertedName;
 
     private void Awake()
     {

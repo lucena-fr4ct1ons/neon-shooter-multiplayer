@@ -6,6 +6,9 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
+    path: Assets/Scenes/MainMenuScene.unity
+    guid: 2c0e5cbcfe6a7ef409f4b9cee846abb9
+  - enabled: 1
     path: Assets/Scenes/LucenaSandbox_Networking.unity
     guid: d2c1b0b80614dba4a9a12d0190ba5cef
   m_configObjects: {}
