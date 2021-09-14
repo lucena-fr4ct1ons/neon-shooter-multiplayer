@@ -17,7 +17,7 @@ public class MainMenuUI : MonoBehaviour
 
     [SerializeField] private TMP_InputField ipInput, portInput;
     [SerializeField] private TMP_InputField hostPortInput;
-    [SerializeField] private string playerName;
+    [SerializeField] private string playerName = "Player";
 
     [Space]
     [SerializeField] private GameObject currentMenu;

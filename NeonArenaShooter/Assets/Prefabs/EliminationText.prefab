@@ -70,8 +70,8 @@ MonoBehaviour:
       m_Calls: []
   m_text: Alien12345 <color=yellow>></color> Alien12345aaaaaaa
   m_isRightToLeft: 0
-  m_fontAsset: {fileID: 11400000, guid: 250665275f83c5f43868ff05e12378c5, type: 2}
-  m_sharedMaterial: {fileID: -2518308797720773329, guid: 250665275f83c5f43868ff05e12378c5, type: 2}
+  m_fontAsset: {fileID: 11400000, guid: 9bc7a0ced0e7f634abc5b8807a5c2d27, type: 2}
+  m_sharedMaterial: {fileID: -6695519402584318893, guid: 9bc7a0ced0e7f634abc5b8807a5c2d27, type: 2}
   m_fontSharedMaterials: []
   m_fontMaterial: {fileID: 0}
   m_fontMaterials: []

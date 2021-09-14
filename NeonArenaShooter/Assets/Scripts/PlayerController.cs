@@ -74,8 +74,8 @@ public class PlayerController : NetworkBehaviour
     {
         base.OnStartAuthority();
         
-        //Cursor.visible = false;
-        //Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+        Cursor.lockState = CursorLockMode.Locked;
         cameraPov = (camera.GetCinemachineComponent(CinemachineCore.Stage.Aim) as CinemachinePOV);
         
         camera.enabled = true;
@@ -146,6 +146,25 @@ public class PlayerController : NetworkBehaviour
             input.Keyboard.CameraRotation.canceled += RotateCamera;
             input.Keyboard.Shoot.performed += ShootingAction;
             input.Keyboard.Shoot.canceled += ShootingAction;
+            input.Keyboard.Pause.performed += PauseMenu;
+        }
+    }
+
+    private void PauseMenu(InputAction.CallbackContext obj)
+    {
+        if (GameplayUI.Instance.ShowPauseMenu())
+        {
+            Cursor.visible = true;
+            Cursor.lockState = CursorLockMode.None;
+            input.Keyboard.CameraRotation.Disable();
+            input.Keyboard.Shoot.Disable();
+        }
+        else
+        {
+            Cursor.visible = false;
+            Cursor.lockState = CursorLockMode.Locked;
+            input.Keyboard.CameraRotation.Enable();
+            input.Keyboard.Shoot.Enable();
         }
     }
 
@@ -223,12 +242,12 @@ public class PlayerController : NetworkBehaviour
                     {
                         continue;
                     }
-                    Debug.Log("There IS a player!");
-                    Debug.Log($"This: {this.teamNumber}, other: {player.teamNumber}", gameObject);
-                    Debug.Log($"Are they equal? {player.teamNumber == this.teamNumber}");
+                    //Debug.Log("There IS a player!");
+                    //Debug.Log($"This: {this.teamNumber}, other: {player.teamNumber}", gameObject);
+                    //Debug.Log($"Are they equal? {player.teamNumber == this.teamNumber}");
                     if (player.teamNumber != this.teamNumber)
                     {
-                        Debug.Log($"Hit: {hits[i].transform.gameObject}");
+                        
                         player.DealDamage(damagePerShot, this);
                         break;
                     }
@@ -239,7 +258,7 @@ public class PlayerController : NetworkBehaviour
                 }
                 else
                 {
-                    Debug.Log($"Hit: {hits[i].transform.gameObject}");
+                    //Debug.Log($"Hit: {hits[i].transform.gameObject}");
                     break;
                 }
             }
@@ -257,6 +276,7 @@ public class PlayerController : NetworkBehaviour
         currentHealth -= damage;
         if (currentHealth <= minHealth)
         {
+            Knockout(true);
             if (damager)
             {
                 RpcDrawElimination(damager.playerName, this.playerName);
@@ -274,7 +294,7 @@ public class PlayerController : NetworkBehaviour
         GameplayUI.Instance.DrawElimination(eliminater, eliminated);
     }
 
-    private void Knockout()
+    private void Knockout(bool ranOnServer = false)
     {
 
         renderer.materials[0].SetColor("_EmissionColor", Color.gray/2);
@@ -289,7 +309,11 @@ public class PlayerController : NetworkBehaviour
             //rb.detectCollisions = false;
             //rb.isKinematic = true;
             myUI.DisplayKOVisual(true);
-            CmdRespawn();
+        }
+        
+        if(isServer && ranOnServer)
+        {
+            StartCoroutine(RespawnCoroutine());
         }
         enabled = false;
     }
@@ -304,6 +328,8 @@ public class PlayerController : NetworkBehaviour
     {
         yield return new WaitForSeconds(respawnTime);
         currentHealth = maxHealth;
+        Debug.Log("Should spawn?");
+        Respawn();
         RpcRespawn();
     }
 
@@ -312,7 +338,12 @@ public class PlayerController : NetworkBehaviour
     {
         //if(isLocalPlayer)
             
-        Respawn();
+        if(!isServer)
+            Respawn();
+        else
+        {
+            Debug.Log("Is server.");
+        }
     }
 
     private void Respawn()
@@ -329,14 +360,17 @@ public class PlayerController : NetworkBehaviour
 
         //transform.position = GameManager.Instance.GetRandomSpawnPoint();
         Color temp = Color.red;
-        temp = (teamNumber == localPlayer.teamNumber) ?  Color.green : Color.red;
-        
-        float intensity = Mathf.Pow(2, 2);
-        temp *= intensity;
+        if (!isServerOnly)
+        {
+            temp = (teamNumber == localPlayer.teamNumber) ? Color.green : Color.red;
 
-        renderer.materials[0].SetColor("_EmissionColor", temp);
-        renderer.materials[1].SetColor("_EmissionColor", temp);
-        
+            float intensity = Mathf.Pow(2, 2);
+            temp *= intensity;
+
+            renderer.materials[0].SetColor("_EmissionColor", temp);
+            renderer.materials[1].SetColor("_EmissionColor", temp);
+        }
+
         anim.SetTrigger("Respawn");
         mainCollider.enabled = true;
         //mainCollider.enabled = true;
@@ -403,6 +437,9 @@ public class PlayerController : NetworkBehaviour
 
     private void OnChangeHealth(int old, int val)
     {
+        if(isLocalPlayer)
+            GameplayUI.Instance.UpdateHealth(val);
+            
         if(val <= minHealth)
             Knockout();
     }
@@ -429,7 +466,6 @@ public class PlayerController : NetworkBehaviour
     
     private void OnChangeTeam(int old, int number)
     {
-        
         {
             StartCoroutine(SetColorCoroutine(number));
         }
@@ -438,7 +474,7 @@ public class PlayerController : NetworkBehaviour
     private IEnumerator SetColorCoroutine(int number)
     {
         yield return new WaitUntil(() => localPlayer != null);
-        Debug.LogError($"this: {number}, local: {localPlayer.teamNumber}", gameObject);
+        //Debug.LogError($"this: {number}, local: {localPlayer.teamNumber}", gameObject);
         Color temp = Color.red;
         temp = (number == localPlayer.teamNumber) ? Color.green : Color.red;
 
